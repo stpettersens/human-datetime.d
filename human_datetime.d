@@ -545,9 +545,10 @@ long human_to_unix(string human_datetime, HumanDateStyle style) {
         return -1;
     }
 
+
     int hrs = cast(int)(date.tz * 60);
     int mins = cast(int)((date.tz * 60) - hrs);
-    int offset = ((hrs + mins) * -1);
+    int offset = (hrs + mins);
 
     writefln("Offset (mins) = %d", offset); // !!!
 
@@ -564,8 +565,8 @@ long human_to_unix(string human_datetime) {
 int main() {
     human_datetime_summary("09 Nov 2025 22:37:00 GMT");
     writeln();
-    writeln(convert_datetime_to_timezone("09 Nov 2025 22:37:00 GMT", Tz.IST));
+    writeln(convert_datetime_to_timezone("09 Nov 2025 22:37:00 GMT", Tz.EST));
     writeln();
-    writeln(human_to_unix("09 Nov 2025 04:07:00 IST"));
+    writeln(human_to_unix("09 Nov 2025 22:37:00 GMT"));
     return 0;
 }
