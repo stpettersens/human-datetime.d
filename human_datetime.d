@@ -20,6 +20,7 @@ struct DateTimeTZ {
     int mm;
     int ss;
     Tz tz;
+    string timezone;
     bool error;
 }
 
@@ -69,13 +70,21 @@ enum LongMonth {
     AUGUST = 8,
     SEPTEMBER = 9, // 30 days.
     OCTOBER = 10,
-    NOVEMEBER = 11, // 30 days.
+    NOVEMBER = 11, // 30 days.
     DECEMBER = 12
 }
 
-enum Tz {
+enum Tz : float {
+    IDLW = -12,
+    SST = -11,
+    HST = -10,
+    AKST = -9,
+    PST = -8,
+    MST = -7,
+    CST = -6,
     EST = -5,
     EDT = -4,
+    NST = -3.5,
     ART = -3,
     GST = -2,
     CVT = -1,
@@ -83,22 +92,50 @@ enum Tz {
     CET = 1,
     EET = 2,
     AST = 3,
+    IRST = 3.5,
     AMT = 4,
+    AFT = 4.5,
     PKT = 5,
+    IST = 5.5,
+    NPT = 5.75,
     OMST = 6,
+    MMT = 6.5,
     KRAT = 7,
     IRKST = 8,
     YAKT = 9,
+    ACST = 9.5,
     VLAT = 10,
+    ACDT = 10.5,
     MAGT = 11,
-    PET = 12
+    PET = 12,
+    CHAST = 12.75,
+    WST = 13,
+    CHADT = 13.75
 }
 
 Tz get_timezone(string timezone) {
     Tz tz = Tz.UTC;
 
     // Map equivalent timezones to the master Tz enum.
+    // All - or + offsets to UTC.
     switch (timezone.toUpper) {
+        case "HDT":
+            tz = Tz.AKST; // - 9
+            break;
+
+        case "AKDT":
+            tz = Tz.PST; // - 8
+            break;
+
+        case "PDT":
+            tz = Tz.MST; // - 7
+            break;
+
+        case "MDT":
+        case "GALT":
+            tz = Tz.CST; // - 6
+            break;
+
         case "ACT":
         case "CDT":
         case "COT":
@@ -137,7 +174,6 @@ Tz get_timezone(string timezone) {
             break;
 
         case "BST":
-        case "IST":
         case "WAT":
         case "WEST":
             tz = Tz.CET; // + 1
@@ -233,6 +269,11 @@ Tz get_timezone(string timezone) {
             tz = Tz.PET; // + 12
             break;
 
+        case "NZDT":
+        case "TOT":
+            tz = Tz.WST; // + 13
+            break;
+
         default: // Resolve as is.
             tz = to!Tz(timezone.toUpper);
             break;
@@ -250,6 +291,14 @@ bool is_leap_year(int year) {
         leap = false;
 
     return leap;
+}
+
+int days_in_feb(int year) {
+    return is_leap_year(year) ? 29 : 28;
+}
+
+int days_in_year(int year) {
+    return is_leap_year(year) ? 366 : 365;
 }
 
 // Common method so that we can define other functions in the future.
@@ -273,10 +322,13 @@ private DateTimeTZ create_datetime_tz(string human_datetime, HumanDateStyle styl
     int ss = 0;
 
     Tz tz = Tz.UTC; // Default to UTC.
+    string timezone = "UTC";
 
     try {
-        if (in_date.length == 5)
+        if (in_date.length == 5) {
             tz = get_timezone(in_date[4]);
+            timezone = in_date[4].toUpper;
+        }
 
         switch (style) {
             case HumanDateStyle.DD_MON_YYYY:
@@ -359,9 +411,9 @@ private DateTimeTZ create_datetime_tz(string human_datetime, HumanDateStyle styl
 
         // February constraints.
         if (m == 2) {
-            int max = is_leap_year(y) ? 29 : 28;
-            if (d > max || d < 1)
-                throw new Exception(format("February in %d can only have 1-%d days.", y, max));
+            int feb_days = days_in_feb(y);
+            if (d > feb_days || d < 1)
+                throw new Exception(format("February in %d can only have 1-%d days.", y, feb_days));
         }
 
         // April, June, September, November contraints.
@@ -406,8 +458,71 @@ private DateTimeTZ create_datetime_tz(string human_datetime, HumanDateStyle styl
     date.mm = mm;
     date.ss = ss;
     date.tz = tz;
+    date.timezone = timezone;
     date.error = false;
     return date;
+}
+
+string get_short_month(int month) {
+    ShortMonth m = to!ShortMonth(month);
+    string mon = to!string(m);
+    return format("%s%s", mon[0], mon[1 .. $].toLower);
+}
+
+string get_long_month(int month) {
+    LongMonth m = to!LongMonth(month);
+    string mon = to!string(m);
+    return format("%s%s", mon[0], mon[1 .. $].toLower);
+}
+
+string get_iso_8601_date(DateTimeTZ date) {
+    return format("%04d-%02d-%02d", date.year, date.month, date.day);
+}
+
+string get_time_24hrs(DateTimeTZ date) {
+    return format("%02d:%02d:%02d", date.hh, date.mm, date.ss);
+}
+
+string convert_time_to_timezone(string hhmmss, Tz current, Tz target) {
+    string[] hms = hhmmss.split(':');
+    int hours = (to!int(hms[0]) - cast(int)current);
+    int mins = (to!int(hms[1]) - (to!int(current - hours) * 60));
+    int secs = to!int(hms[2]);
+
+    int offset_hrs = cast(int)target;
+    int offset_mins = to!int((target - offset_hrs) * 60);
+
+    hours = (hours + offset_hrs);
+    mins = (mins + offset_mins);
+
+    return format("%02d:%02d:%02d %s", hours, mins, secs, to!string(target));
+}
+
+// Print a human readable summary of a date and time.
+int human_datetime_summary(string human_datetime, HumanDateStyle style) {
+    DateTimeTZ date = create_datetime_tz(human_datetime, style);
+    if (date.error)
+        return -1;
+
+    writeln("** Human Readable Date Time Summary **");
+    writefln("The year is %d", date.year);
+    writefln("There are %d days in this year.", days_in_year(date.year));
+    writefln("February this year has %d days.", days_in_feb(date.year));
+    writefln("The short month is %s.", get_short_month(date.month));
+    writefln("The long month is %s.", get_long_month(date.month));
+    writefln("The month number is %d.", date.month);
+    writefln("The day number is %d.", date.day);
+    writefln("The ISO 8601 date is %s.", get_iso_8601_date(date));
+    writefln("The time given is %s.", get_time_24hrs(date));
+    writefln("The timezone given was %s.", date.timezone);
+    writefln("This is equivalent to %s.", to!string(date.tz));
+    writefln("The offset to UTC is %.2f.", date.tz);
+
+    return 0;
+}
+
+int human_datetime_summary(string human_datetime) {
+    return human_datetime_summary(human_datetime, HumanDateStyle.DD_MON_YYYY);
 }
 
 // Use long as return type as this supports unix timestamps
@@ -423,12 +538,20 @@ long human_to_unix(string human_datetime, HumanDateStyle style) {
         return -1;
     }
 
+    int offset = 0;
+
     long unixtime = SysTime(DateTime(date.year, date.month, date.day, date.hh, date.mm, date.ss),
-    new immutable SimpleTimeZone(dur!"hours"(date.tz), to!string(date.tz))).toUnixTime();
+    new immutable SimpleTimeZone(dur!"hours"(offset), date.timezone)).toUnixTime();
 
     return unixtime;
 }
 
 long human_to_unix(string human_datetime) {
     return human_to_unix(human_datetime, HumanDateStyle.DD_MON_YYYY);
+}
+
+int main() {
+    human_datetime_summary("09 Nov 2025 00:00:00 GMT");
+    writeln(convert_time_to_timezone("00:00:00", Tz.UTC, Tz.CET));
+    return 0;
 }
