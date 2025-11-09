@@ -476,26 +476,33 @@ string get_long_month(int month) {
 }
 
 string get_iso_8601_date(DateTimeTZ date) {
-    return format("%04d-%02d-%02d", date.year, date.month, date.day);
+    return format("%04d-%02d-%02d", date.year, date.mm, date.day);
 }
 
 string get_time_24hrs(DateTimeTZ date) {
     return format("%02d:%02d:%02d", date.hh, date.mm, date.ss);
 }
 
-string convert_time_to_timezone(string hhmmss, Tz current, Tz target) {
-    string[] hms = hhmmss.split(':');
-    int hours = (to!int(hms[0]) - cast(int)current);
-    int mins = (to!int(hms[1]) - (to!int(current - hours) * 60));
-    int secs = to!int(hms[2]);
+string convert_datetime_to_timezone(DateTimeTZ date, Tz target) {
+    int hours = (date.hh - cast(int)date.tz);
+    int mins = (date.mm - ((cast(int)date.tz - hours) * 60));
 
     int offset_hrs = cast(int)target;
-    int offset_mins = to!int((target - offset_hrs) * 60);
+    int offset_mins = (to!int(target - offset_hrs) * 60);
 
-    hours = (hours + offset_hrs);
-    mins = (mins + offset_mins);
+    hours = (((hours + offset_hrs) % 24 + 24) % 24);
+    mins = (((mins + offset_mins) % 60 + 60) % 60);
 
-    return format("%02d:%02d:%02d %s", hours, mins, secs, to!string(target));
+    return format("%04d-%02d-%02d %02d:%02d:%02d %s", date.year, date.mm, date.day, hours, mins, date.ss, to!string(target));
+}
+
+string convert_datetime_to_timezone(string human_datetime, HumanDateStyle style, Tz target) {
+    DateTimeTZ date = create_datetime_tz(human_datetime, style);
+    return convert_datetime_to_timezone(date, target);
+}
+
+string convert_datetime_to_timezone(string human_datetime, Tz target) {
+    return convert_datetime_to_timezone(human_datetime, HumanDateStyle.DD_MON_YYYY, target);
 }
 
 // Print a human readable summary of a date and time.
@@ -538,10 +545,14 @@ long human_to_unix(string human_datetime, HumanDateStyle style) {
         return -1;
     }
 
-    int offset = 0;
+    int hrs = cast(int)(date.tz * 60);
+    int mins = cast(int)((date.tz * 60) - hrs);
+    int offset = ((hrs + mins) * -1);
+
+    writefln("Offset (mins) = %d", offset); // !!!
 
     long unixtime = SysTime(DateTime(date.year, date.month, date.day, date.hh, date.mm, date.ss),
-    new immutable SimpleTimeZone(dur!"hours"(offset), date.timezone)).toUnixTime();
+    new immutable SimpleTimeZone(dur!"minutes"(offset), date.timezone)).toUnixTime();
 
     return unixtime;
 }
@@ -551,7 +562,10 @@ long human_to_unix(string human_datetime) {
 }
 
 int main() {
-    human_datetime_summary("09 Nov 2025 00:00:00 GMT");
-    writeln(convert_time_to_timezone("00:00:00", Tz.UTC, Tz.CET));
+    human_datetime_summary("09 Nov 2025 22:37:00 GMT");
+    writeln();
+    writeln(convert_datetime_to_timezone("09 Nov 2025 22:37:00 GMT", Tz.IST));
+    writeln();
+    writeln(human_to_unix("09 Nov 2025 04:07:00 IST"));
     return 0;
 }
