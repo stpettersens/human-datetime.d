@@ -301,9 +301,7 @@ int days_in_year(int year) {
     return is_leap_year(year) ? 366 : 365;
 }
 
-// Common method so that we can define other functions in the future.
-// Not just get Unix timestamps.
-private DateTimeTZ create_datetime_tz(string human_datetime, HumanDateStyle style) {
+DateTimeTZ create_datetime_tz(string human_datetime, HumanDateStyle style) {
     DateTimeTZ date;
     long unixtime = 0L;
 
@@ -385,8 +383,8 @@ private DateTimeTZ create_datetime_tz(string human_datetime, HumanDateStyle styl
                 d = to!int(in_date[2]);
                 break;
 
-             // Short year dates start at 2000 and end at 2099
-             // (i.e. 00 is 2000 and 99 is 2099).
+            // Short year dates start at 2000 and end at 2099
+            // (i.e. 00 is 2000 and 99 is 2099).
             case HumanDateStyle.DD_MM_YY:
                 d = to!int(in_date[0]);
                 m = to!int(in_date[1]);
@@ -483,26 +481,50 @@ string get_time_24hrs(DateTimeTZ date) {
     return format("%02d:%02d:%02d", date.hh, date.mm, date.ss);
 }
 
-string convert_datetime_to_timezone(DateTimeTZ date, Tz target) {
+DateTimeTZ convert_datetime_to_timezone(DateTimeTZ date, string target_timezone) {
+    if (date.tz == get_timezone(target_timezone))
+        return date; // No conversion.
+
+    date.timezone = target_timezone;
+
+    Tz target = get_timezone(target_timezone);
+
     int hours = (date.hh - cast(int)date.tz);
     int mins = (date.mm - ((cast(int)date.tz - hours) * 60));
 
     int offset_hrs = cast(int)target;
     int offset_mins = (to!int(target - offset_hrs) * 60);
 
-    hours = (((hours + offset_hrs) % 24 + 24) % 24);
-    mins = (((mins + offset_mins) % 60 + 60) % 60);
+    date.hh = (((hours + offset_hrs) % 24 + 24) % 24);
+    date.mm = (((mins + offset_mins) % 60 + 60) % 60);
 
-    return format("%04d-%02d-%02d %02d:%02d:%02d %s", date.year, date.mm, date.day, hours, mins, date.ss, to!string(target));
+    // TODO
+    //date.year
+    //date.month
+    //date.day
+
+    return date;
 }
 
-string convert_datetime_to_timezone(string human_datetime, HumanDateStyle style, Tz target) {
+DateTimeTZ convert_datetime_to_utc(DateTimeTZ date) {
+    if (date.tz == Tz.UTC)
+        return date; // No conversion.
+
+    return convert_datetime_to_timezone(date, "UTC");
+}
+
+string convert_datetime_to_timezone(string human_datetime, HumanDateStyle style, string target_timezone) {
     DateTimeTZ date = create_datetime_tz(human_datetime, style);
-    return convert_datetime_to_timezone(date, target);
+    if (date.error)
+        return "-1";
+
+    date = convert_datetime_to_timezone(date, target_timezone);
+    return format("%04d-%02d-%02d %02d:%02d:%02d %s",
+    date.year, date.month, date.day, date.hh, date.mm, date.ss, date.timezone);
 }
 
-string convert_datetime_to_timezone(string human_datetime, Tz target) {
-    return convert_datetime_to_timezone(human_datetime, HumanDateStyle.DD_MON_YYYY, target);
+string convert_datetime_to_timezone(string human_datetime, string target_timezone) {
+    return convert_datetime_to_timezone(human_datetime, HumanDateStyle.DD_MON_YYYY, target_timezone);
 }
 
 // Print a human readable summary of a date and time.
@@ -545,15 +567,11 @@ long human_to_unix(string human_datetime, HumanDateStyle style) {
         return -1;
     }
 
-
-    int hrs = cast(int)(date.tz * 60);
-    int mins = cast(int)((date.tz * 60) - hrs);
-    int offset = (hrs + mins);
-
-    writefln("Offset (mins) = %d", offset); // !!!
+    // Convert date time to UTC as necessary.
+    date = convert_datetime_to_utc(date);
 
     long unixtime = SysTime(DateTime(date.year, date.month, date.day, date.hh, date.mm, date.ss),
-    new immutable SimpleTimeZone(dur!"minutes"(offset), date.timezone)).toUnixTime();
+    new immutable SimpleTimeZone(dur!"minutes"(0), date.timezone)).toUnixTime();
 
     return unixtime;
 }
@@ -562,11 +580,7 @@ long human_to_unix(string human_datetime) {
     return human_to_unix(human_datetime, HumanDateStyle.DD_MON_YYYY);
 }
 
-int main() {
-    human_datetime_summary("09 Nov 2025 22:37:00 GMT");
-    writeln();
-    writeln(convert_datetime_to_timezone("09 Nov 2025 22:37:00 GMT", Tz.EST));
-    writeln();
-    writeln(human_to_unix("09 Nov 2025 22:37:00 GMT"));
-    return 0;
+long unix_now() {
+    auto now = Clock.currTime();
+    return now.toUnixTime();
 }
