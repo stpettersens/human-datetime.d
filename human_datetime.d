@@ -481,6 +481,10 @@ string get_time_24hrs(DateTimeTZ date) {
     return format("%02d:%02d:%02d", date.hh, date.mm, date.ss);
 }
 
+string get_time_12hrs(DateTimeTZ date) {
+    return "!TODO";
+}
+
 DateTimeTZ convert_datetime_to_timezone(DateTimeTZ date, string target_timezone) {
     if (date.tz == get_timezone(target_timezone))
         return date; // No conversion.
@@ -489,14 +493,23 @@ DateTimeTZ convert_datetime_to_timezone(DateTimeTZ date, string target_timezone)
 
     Tz target = get_timezone(target_timezone);
 
-    int hours = (date.hh - cast(int)date.tz);
-    int mins = (date.mm - ((cast(int)date.tz - hours) * 60));
+    int hours = date.hh;
+    int mins = date.mm;
+
+    double shift = to!double(target);
+    double fr = (shift - to!int(shift));
 
     int offset_hrs = cast(int)target;
-    int offset_mins = (to!int(target - offset_hrs) * 60);
+    double offset_mins = (shift - to!int(shift)) * 60;
+
+    if (offset_mins >= 30) offset_hrs++;
+
+    writefln("Shift = %.2f", shift);
+    writefln("Offset hours = %d, Offset mins = %.2f", offset_hrs, offset_mins);
+    writeln();
 
     date.hh = (((hours + offset_hrs) % 24 + 24) % 24);
-    date.mm = (((mins + offset_mins) % 60 + 60) % 60);
+    date.mm = (((mins + to!int(offset_mins)) % 60 + 60) % 60);
 
     // TODO
     //date.year
